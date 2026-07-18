@@ -1,29 +1,64 @@
-# 🌾 FarmScore AI
+# FarmScore AI
 
-FarmScore AI is an AI-powered agricultural land assessment platform.
+Satellite-driven farm credit risk scoring platform. Farmers/loan officers enter basic farm details, and the platform generates a FarmScore (0–100) with a risk category and a downloadable PDF report.
 
-## Features
+## Project Structure
 
-- Farm Suitability Score
-- Satellite-based Analysis
-- NDVI & Crop Health
-- Rainfall Analysis
-- Soil Assessment
-- Groundwater Analysis
-- Road & Market Accessibility
-- Risk Classification
-- Professional PDF Report
+```
+FarmScore-AI/
+│
+├── client/
+│   ├── index.html      # Farm details form + score display
+│   ├── style.css        # Styling
+│   └── script.js         # API calls, form handling, PDF download
+│
+├── server/
+│   ├── server.js         # Express API entry point
+│   ├── score.js          # FarmScore calculation logic
+│   └── pdf.js             # PDF report generation (pdfkit)
+│
+├── docs/
+│   ├── sample-report.pdf  # Example generated report
+│   └── ownership.pdf      # Project ownership / documentation
+│
+├── package.json
+├── README.md
+└── .gitignore
+```
 
-## Technology
+## Getting Started
 
-- React
-- Node.js
-- Google Earth Engine
-- Open-Meteo
-- SoilGrids
-- OpenStreetMap
-- Render
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## Status
+2. Start the server:
+   ```bash
+   npm start
+   ```
+   The API runs at `http://localhost:5000`.
 
-🚧 Under Development
+3. Open `client/index.html` in your browser (or serve it with any static
+   file server) to use the form.
+
+## API Endpoints
+
+| Method | Endpoint       | Description                          |
+|--------|----------------|---------------------------------------|
+| GET    | `/api/health`  | Health check                          |
+| POST   | `/api/score`   | Calculate FarmScore from farm details |
+| POST   | `/api/report`  | Generate and download a PDF report    |
+
+## Roadmap
+
+- [ ] Replace placeholder scoring heuristics in `score.js` with real
+      satellite-derived indicators (NDVI, soil moisture, rainfall/CHIRPS)
+      via Google Earth Engine
+- [ ] Add persistent storage for farmer records
+- [ ] Add authentication for loan officers
+- [ ] Map-based farm boundary input (Leaflet.js)
+
+## License
+
+Internal / proprietary — update as needed before publishing.
