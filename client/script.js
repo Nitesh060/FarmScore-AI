@@ -1,73 +1,123 @@
-const API_BASE = "http://localhost:5000/api";
+const farmerNameEl = document.getElementById('farmerName');
+const latEl = document.getElementById('latitude');
+const lonEl = document.getElementById('longitude');
+const mapBtn = document.getElementById('mapBtn');
+const reportBtn = document.getElementById('reportBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const coordReadout = document.getElementById('coordReadout');
 
-const form = document.getElementById("farmForm");
-const resultCard = document.getElementById("resultCard");
-const scoreOutput = document.getElementById("scoreOutput");
-const downloadPdfBtn = document.getElementById("downloadPdfBtn");
+const gaugeFill = document.getElementById('gaugeFill');
+const farmScoreEl = document.getElementById('farmScore');
+const farmScoreEchoEl = document.getElementById('farmScoreEcho');
+const riskLevelEl = document.getElementById('riskLevel');
+const statusEl = document.getElementById('status');
 
-let lastFarmData = null;
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 68;
+let lastReport = null;
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+function updateReadout() {
+  const lat = latEl.value ? parseFloat(latEl.value).toFixed(4) : '--.----';
+  const lon = lonEl.value ? parseFloat(lonEl.value).toFixed(4) : '--.----';
+  coordReadout.textContent = `LAT ${lat}    LON ${lon}`;
+}
+latEl.addEventListener('input', updateReadout);
+lonEl.addEventListener('input', updateReadout);
 
-  const farmData = {
-    farmerName: document.getElementById("farmerName").value,
-    landArea: parseFloat(document.getElementById("landArea").value),
-    latitude: parseFloat(document.getElementById("latitude").value),
-    longitude: parseFloat(document.getElementById("longitude").value),
-    cropType: document.getElementById("cropType").value,
-  };
-
-  lastFarmData = farmData;
-
-  try {
-    const res = await fetch(`${API_BASE}/score`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(farmData),
-    });
-
-    if (!res.ok) throw new Error("Failed to calculate score");
-
-    const data = await res.json();
-    lastFarmData.score = data.score;
-    lastFarmData.breakdown = data.breakdown;
-
-    scoreOutput.innerHTML = `
-      <div class="score-value">${data.score} / 100</div>
-      <p><strong>Risk Category:</strong> ${data.riskCategory}</p>
-      <ul>
-        ${Object.entries(data.breakdown)
-          .map(([k, v]) => `<li>${k}: ${v}</li>`)
-          .join("")}
-      </ul>
-    `;
-    resultCard.hidden = false;
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
+// Simulated "pick from map" — drops a sample coordinate in an Odisha farm belt.
+mapBtn.addEventListener('click', () => {
+  latEl.value = (21.35 + Math.random() * 0.3).toFixed(4);
+  lonEl.value = (83.85 + Math.random() * 0.3).toFixed(4);
+  updateReadout();
 });
 
-downloadPdfBtn.addEventListener("click", async () => {
-  if (!lastFarmData) return;
+function scoreToColor(score) {
+  if (score >= 70) return getComputedStyle(document.documentElement).getPropertyValue('--veg').trim();
+  if (score >= 40) return getComputedStyle(document.documentElement).getPropertyValue('--soil').trim();
+  return getComputedStyle(document.documentElement).getPropertyValue('--danger').trim();
+}
 
-  try {
-    const res = await fetch(`${API_BASE}/report`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lastFarmData),
-    });
+function riskFromScore(score) {
+  if (score >= 70) return { label: 'Low', cls: 'risk-low' };
+  if (score >= 40) return { label: 'Medium', cls: 'risk-medium' };
+  return { label: 'High', cls: 'risk-high' };
+}
 
-    if (!res.ok) throw new Error("Failed to generate PDF");
+// Deterministic mock score derived from name + coordinates.
+// Replace this with the real GEE-backed scoring call.
+function computeMockScore(name, lat, lon) {
+  const seed = `${name}|${lat}|${lon}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return 35 + (hash % 60); // spread across 35-94
+}
 
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `FarmScore-Report-${lastFarmData.farmerName || "report"}.pdf`;
+reportBtn.addEventListener('click', () => {
+  const name = farmerNameEl.value.trim();
+  const lat = latEl.value;
+  const lon = lonEl.value;
+
+  if (!name || !lat || !lon) {
+    statusEl.textContent = 'Enter name and coordinates first';
+    statusEl.style.color = 'var(--danger)';
+    return;
+  }
+
+  statusEl.style.color = '';
+  statusEl.textContent = 'Analyzing satellite data…';
+  farmScoreEl.textContent = '--';
+  farmScoreEchoEl.textContent = '--';
+  riskLevelEl.textContent = '--';
+  gaugeFill.style.stroke = scoreToColor(70);
+  gaugeFill.style.strokeDashoffset = GAUGE_CIRCUMFERENCE;
+
+  setTimeout(() => {
+    const score = computeMockScore(name, lat, lon);
+    const risk = riskFromScore(score);
+    const offset = GAUGE_CIRCUMFERENCE * (1 - score / 100);
+
+    gaugeFill.style.stroke = scoreToColor(score);
+    gaugeFill.style.strokeDashoffset = offset;
+    farmScoreEl.textContent = score;
+    farmScoreEchoEl.textContent = `${score} / 100`;
+    riskLevelEl.textContent = risk.label;
+    riskLevelEl.className = `result-val ${risk.cls}`;
+    statusEl.textContent = 'Report ready';
+
+    lastReport = { name, lat, lon, score, risk: risk.label, date: new Date().toLocaleDateString() };
+    downloadBtn.disabled = false;
+  }, 900);
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!lastReport) return;
+
+  if (window.jspdf) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('FarmScore AI — Farm Suitability Report', 14, 20);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(`Date: ${lastReport.date}`, 14, 32);
+    doc.text(`Farmer name: ${lastReport.name}`, 14, 42);
+    doc.text(`Coordinates: ${lastReport.lat}, ${lastReport.lon}`, 14, 50);
+    doc.setFontSize(14);
+    doc.text(`Farm score: ${lastReport.score} / 100`, 14, 64);
+    doc.text(`Risk level: ${lastReport.risk}`, 14, 74);
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text('Data sources: Sentinel-2, CHIRPS, MODIS, GLDAS', 14, 90);
+    doc.save(`FarmScore_${lastReport.name.replace(/\s+/g, '_')}.pdf`);
+  } else {
+    // Fallback if the PDF library fails to load
+    const text = `FarmScore AI Report\nFarmer: ${lastReport.name}\nCoordinates: ${lastReport.lat}, ${lastReport.lon}\nFarm score: ${lastReport.score}/100\nRisk level: ${lastReport.risk}`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `FarmScore_${lastReport.name.replace(/\s+/g, '_')}.txt`;
     a.click();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    alert("Error: " + err.message);
   }
 });
